@@ -57,8 +57,8 @@ module Widdle::Query
       def initialize(options={})
         @logger = options.delete(:logger) || self.class.default_logger
         @options = options
-        options.host = '127.0.0.1' if options.host.nil? || options.host == 'localhost'
-        options.port ||= 9312
+        options[:host] = '127.0.0.1' if !options.has_key?(:host) || options[:host] == 'localhost'
+        options[:port] = 9312 if !options.has_key?(:port)
 
         # If you use localhost, MySQL insists on a socket connection, but Sphinx
         # requires a TCP connection. Using 127.0.0.1 fixes that.
