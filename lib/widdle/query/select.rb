@@ -5,14 +5,14 @@ module Widdle::Query
       @client = client
       args = ( params.pop if Hash === params.last ) || {}
       @columns               = params # || []
-      @indices               = Array.wrap(args.delete(:from))
-      @match                 = Array.wrap(args.delete(:match))
-      @wheres                = Array.wrap(args.delete(:where))
+      @indices               = args.delete(:from).split(',').map!{|x| x.strip }
+      @match                 = args.delete(:match).split(',').map!{|x| x.strip }
+      @wheres                = args.delete(:where).split(',').map!{|x| x.strip }
       @group_by              = args.delete(:group)
       @order_by              = args.delete(:order)
       @order_within_group_by = args.delete(:group_order)
       @offset                = args.delete(:offset)
-      @limit                 = Array.wrap(args.delete(:limit) || 20)
+      @limit                 = args.delete(:limit) || 20
       @options               = args.delete(:options) || {}
 #      client.logger.debug "Widdle::Query#select.init: client=#{@client} idx=#{@indices} cols=#{@columns}  wheres=#{@wheres}"
     end
