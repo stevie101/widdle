@@ -4,15 +4,15 @@ module Widdle::Query
     def initialize(client, *params)
       @client = client
       args = ( params.pop if Hash === params.last ) || {}
-      @columns               = params # || []
-      @indices               = args.delete(:from).split(',').map!{|x| x.strip }
-      @match                 = args.delete(:match).split(',').map!{|x| x.strip }
-      @wheres                = args.delete(:where).split(',').map!{|x| x.strip }
+      @columns               = args.delete(:select) if args.has_key? :select
+      @indices               = args.delete(:from) if args.has_key?(:from)
+      @match                 = args.delete(:match) if args.has_key?(:match)
+      @wheres                = args.delete(:where) if args.has_key?(:where)
       @group_by              = args.delete(:group)
       @order_by              = args.delete(:order)
       @order_within_group_by = args.delete(:group_order)
       @offset                = args.delete(:offset)
-      @limit                 = args.delete(:limit) || 20
+      @limit                 = args.delete(:limit)
       @options               = args.delete(:options) || {}
 #      client.logger.debug "Widdle::Query#select.init: client=#{@client} idx=#{@indices} cols=#{@columns}  wheres=#{@wheres}"
     end
@@ -20,6 +20,10 @@ module Widdle::Query
     def columns(*cols)
       @columns += cols
       self
+    end
+    
+    def columns
+      @columns
     end
     
     def from(*indices)
@@ -70,14 +74,16 @@ module Widdle::Query
   
     def to_s
       #FIXME validate everything to avoid injection
-      sql = "SELECT #{columns_clause} FROM #{ @indices.join(', ') }"
+      sql = "SELECT #{columns_clause}"
+      sql << " FROM #{ @indices.join(', ') }" if !@indices.nil?
       sql << " WHERE #{ combined_wheres }" if wheres?
       sql << " GROUP BY #{@group_by}"      if !@group_by.nil?
       sql << " ORDER BY #{@order_by}"      if !@order_by.nil?
       unless @order_within_group_by.nil?
         sql << " WITHIN GROUP ORDER BY #{@order_within_group_by}"
       end
-      sql << " #{limit_clause}"   unless @limit.nil? && @offset.nil?
+      sql << limit_clause
+      sql << " OFFSET #{@offset}" if !@offset.nil?
       sql << " #{options_clause}" unless @options.empty?
     
       sql
@@ -86,24 +92,30 @@ module Widdle::Query
     private
     
     def columns_clause
-      cols = @columns.map {|c|
-        if Hash === c
-          c.map{|k,v| v == true ? "#{k}" : "#{v} as `#{k}`" }
-        else
-          c
-        end
-      }.flatten.reject(&:empty?)
-      cols.push('*') if cols.empty?
-      cols.join(', ')
+      if @columns
+        cols = @columns.map {|c|
+          if Hash === c
+            c.map{|k,v| v == true ? "#{k}" : "#{v} as `#{k}`" }
+          else
+            c
+          end
+        }.flatten.reject(&:empty?)
+        cols.push('*') if cols.empty?
+        cols.join(', ')
+      else
+        cols = ['*']
+      end
     end
 
     def wheres?
-      @wheres.presence || @match.presence
+      @wheres || @match
     end
   
     def combined_wheres
-      @wheres.reject!(&:empty?)
-      [ *@match.map{|v| "MATCH('#{client.escape(v)}')"}, where_clause(@wheres) ].reject(&:empty?).join(' AND ')
+      unless !@wheres
+        @wheres.reject!(&:empty?)
+        [ *@match.map{|v| "MATCH('#{client.escape(v)}')"}, where_clause(@wheres) ].reject(&:empty?).join(' AND ')
+      end
     end
   
     # where: [ conditions ]
@@ -160,9 +172,20 @@ module Widdle::Query
     end
   
     def limit_clause
-      @offset ||= @limit.first if @limit.size > 1
-      limit = [(Integer(@offset) rescue nil), (Integer(@limit.last) rescue nil)]
-      "LIMIT #{limit.compact.join(', ')}" if limit.any?
+      
+      if !@limit.nil?
+      
+        case @limit
+        when Array        
+          return " LIMIT #{@limit[0]},#{@limit[1]}"
+        when Integer        
+          return " LIMIT #{@limit}"
+        end
+        
+      end
+      
+      return ""
+      
     end
   
     def options_clause
